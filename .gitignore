@@ -5,3 +5,4 @@
 .DS_Store
 .quarto
 *.rds
+bayesian_sem_cache
