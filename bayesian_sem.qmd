@@ -11,7 +11,7 @@ format:
 
 ## Libraries You'll Need
 
-Below is a bit of a mental exegesis on Bayesian SEM with brms. If you wish to follow along with R code, load up the following libraries, and then let's let her rip. If you have comments or corrections, post them as an [issue on the repo for this tutorial](https://github.com/jebyrnes/Ecological-SEMs-in-lavaan/issues).
+Below is a bit of a mental exegesis on Bayesian SEM with brms. If you wish to follow along with R code, load up the following libraries, and then let's let her rip. If you have comments or corrections, post them as an [issue on the repo for this tutorial](https://github.com/jebyrnes/bayesian_sem/issues).
 
 ```{r load_libraries, warning=FALSE, messages=FALSE}
 ## If you don't have it, pacman is great
@@ -1295,4 +1295,4 @@ Woo! This works! There's a lot more to explore here - fit, predictions, etc., bu
 
 ## Comments?
 
-I'm putting this on github as I want to version and change it. I hope to put it up in pieces on my blog at some point. For now, if you have questions, comments, suggestions for fixing things, or point out stuff I've done wrong, post an [issue on the repo for this tutorial](https://github.com/jebyrnes/Ecological-SEMs-in-lavaan/issues)
+I'm putting this on github as I want to version and change it. I hope to put it up in pieces on my blog at some point. For now, if you have questions, comments, suggestions for fixing things, or point out stuff I've done wrong, post an [issue on the repo for this tutorial](https://github.com/jebyrnes/bayesian_sem/issues)
