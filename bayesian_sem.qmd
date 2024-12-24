@@ -324,6 +324,12 @@ ggplot(direct_indirect,
 
 Wow. Really shows how similar they are. And while we could have done a bunch of multiplication here, we're answering a direct question that is **very** specific, which I like. How strong is the direct versus indirect effect of changing age by one unit.
 
+Note, you can also try `bayestestR::mediation(rich_brms)` (h/t to Angelos Amyntas), which works for this example - not sure about others - but gives some odd results on proportion mediated.
+
+```{r mediation_bayes}
+bayestestR::mediation(rich_brms)
+```
+
 ### ROPEs
 
 Eyeballing is great here, but, what if we want some numbers to sink our teeth into. We're not talking p-values but something equivalent. In a frequentist world, a p value for NHST of a parameter evaluates a point hypothesis asking what is the probability of obtaining our coefficient or more extreme coefficient given the data and precision if the true value of the coefficient had been 0. That's a lot. And not what we want to know. 
