@@ -296,17 +296,21 @@ quantile(de$de, probs = c(0.05, 0.11, 0.5, 0.89, 0.95))
 
 So, yes, complex for a linear model. But perfect if this had been, say, exponential. We could have even looked at how much richness changes in units of standard deviations or whatnot.
 
-What's great is that, from the above, we also got the change in fireseverity from the simulation - ~ -2.65. So, we can apply the same workflow, and them compare the two effects.
+What's great is that, from the above, we also got the change in fireseverity from the simulation: ~ 0.06 (or just look the coefficient). So, we can apply the same workflow, and them compare the two effects.
 
 ```{r ide}
 ide <- linpred_draws(rich_brms,
-              newdata = data.frame(age = c(0,0), firesev = c(0, -2.65))) |>
+              newdata = data.frame(age = c(0,0), firesev = c(0, 0.06))) |>
   ungroup() |>
   filter(.category == "rich") |>
   select(age, .draw, .linpred) |>
   group_by(.draw) |>
   arrange(age) |>
   summarize(ide = .linpred[2] - .linpred[1])
+
+# here it is!
+mean(ide$ide)
+quantile(ide$ide, probs = c(0.05, 0.11, 0.5, 0.89, 0.95))
 
 direct_indirect <- data.frame(direct = de$de, indirect = ide$ide) |>
   pivot_longer(everything())
@@ -318,7 +322,7 @@ ggplot(direct_indirect,
   labs(y="", x = "change in richness")
 ```
 
-Wow. Really shows the difference in magnitude and how much stronger that indirect effect is here. And while we could have done a bunch of multiplication here, we're answering a direct question that is **very** specific, which I like. How strong is the direct versus indirect effect of changing age by one unit.
+Wow. Really shows how similar they are. And while we could have done a bunch of multiplication here, we're answering a direct question that is **very** specific, which I like. How strong is the direct versus indirect effect of changing age by one unit.
 
 ### ROPEs
 
