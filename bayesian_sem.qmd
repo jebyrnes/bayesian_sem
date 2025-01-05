@@ -41,9 +41,10 @@ theme_set(theme_classic(base_size = 12))
 
 # options to make brms faster on a multicore
 # machine - change as needed
-# options(brms.backend = "cmdstanr", 
-#         mc.cores = parallel::detectCores(),
-#         threads = 2)
+options(file_refit = "on_change",
+        brms.backend = "cmdstanr",
+        mc.cores = parallel::detectCores(),
+        threads = 2)
 ```
 
 ## The Quest
@@ -638,7 +639,7 @@ Yes. The saturated model is way better at predicting out of sample.
 
 Again, we can compare models using Bayes Factors. Again, make sure you know what you're doing. Note, this is not appropriate with the flat priors we have, but...
 
-```{r bf_saturated, message = FALSE, warning = FALSE, cache = TRUE}
+```{r bf_saturated, message = FALSE, error = FALSE, warning = FALSE}
 bayes_factor(penguin_sparse_brm,
              penguin_saturated_brm)
 ```
@@ -854,7 +855,22 @@ dagify(bill_length_mm ~ species + body_mass_g + e_length,
        ) ) |> plot()
 ```
 
-So, how do we incorporate this correlated error into our model? `brms` has a nice syntactic solution. As error is modeled with each row getting its own residual value, we can formally write that into our model. This will look like a random effect (I mean, we're modeling sigma). Further, `brms` has a synatax to allow random effects to be correlated across different relationships - i.e., correlated error! If we gave penguins a column called `obs` for observation number, then each component of the SEM from the above model would have `(1 | dl | obs)` in it, where `dl` here specifies a correlated set of errors - in our case, between depth and length (I could have called it anything). Last, we need to give each `bf()` a fixed sigma of 1. It's a bit of an accounting trick so everything sloshes into the correlated errors, but, we need it to make an identified model.
+So, how do we incorporate this correlated error into our model? If the correlated error is between all of your endogenous variables, we can easily accomodate this with the `set_rescor()` that we've been setting to false. rescor - Residual Correlation. Now we can set it to true!
+
+```{r rescor_true, warning=FALSE, message=FALSE}
+cor_err_rescor_bf <-
+  bf(bill_depth_mm ~ species + body_mass_g) +
+  bf(bill_length_mm ~ species + body_mass_g) +
+  set_rescor(TRUE)
+
+corr_err_rescor_brm <- brm(cor_err_rescor_bf,
+                    data = penguins,
+                    file_refit = "on_change",
+                    file = "fit_models/corr_err_rescor_brm.rds")
+```
+
+
+But what if we want to be more precise? `brms` has a nice syntactic solution, although this is currently a bit of a hack. As error is modeled with each row getting its own residual value, we can formally write that into our model. This will look like a random effect (I mean, we're modeling sigma). Further, `brms` has a syntax to allow random effects to be correlated across different relationships - i.e., correlated error! If we gave penguins a column called `obs` for observation number, then each component of the SEM from the above model would have `(1 | dl | obs)` in it, where `dl` here specifies a correlated set of errors - in our case, between depth and length (I could have called it anything). Last, we need to give each `bf()` a fixed sigma. We cannot set it to 0, as the function in stan expects some sigma. Here we will use 0.1. It's a bit of an accounting trick so everything sloshes into the correlated errors, but, we need it to make an identified model.
 
 Here's what that model would look like. Note, I'm not going to work with priors in order to focus on the error structure. I leave that as an exercise for you.
 
@@ -863,9 +879,9 @@ penguins <- mutate(penguins, obs = 1:n())
 
 cor_err_bf <-
   bf(bill_depth_mm ~ species + body_mass_g +
-       (1|dl|obs), sigma = 1) +
+       (1|dl|obs), sigma = 0.1) +
   bf(bill_length_mm ~ species + body_mass_g +
-       (1|dl|obs), sigma = 1) +
+       (1|dl|obs), sigma = 0.1) +
   set_rescor(FALSE)
 
 corr_err_brm <- brm(cor_err_bf,
@@ -875,7 +891,54 @@ corr_err_brm <- brm(cor_err_bf,
 summary(corr_err_brm)
 ```
 
-So we have a correlation of residuals of ~ 0.86. That's pretty strong - and unsurprising given the physical constraints.
+What is the correlation of our residuals? At this point, the models produce *slightly* different answers, depending on sigma. 0.1 works, but larger values don't. Still trying to figure out why. You can't just take the correlation straight from `corr_err_brm` as the partitioning of the residual makes the correlation too high. But, we can pull it out by looking at the residuals summed across both components.
+
+```{r sum_resid}
+# get full residuals and their correlations
+res_err <- residual_draws(corr_err_brm, 
+                    newdata = penguins |> 
+                      filter(!is.na(bill_length_mm)),
+                    re_formula = ~obs)
+res_err |>
+  pivot_wider(names_from = .category, 
+              values_from = .residual) |>
+  group_by(.draw) |>
+  summarise(sigma_billdepthmm = sd(billdepthmm),
+            sigma_billlengthmm = sd(billlengthmm),
+            rescor = cor(billlengthmm, billdepthmm)) |>
+  select(-.draw) |>
+  reframe(across(everything(), 
+                 quantile, probs = c(0.25, 0.5, 0.75))) |>
+  mutate(q = c(0.25, 0.5, 0.75)) |> relocate(q)
+```
+
+We can compare this to the `set_rescor(TRUE)` model
+
+```{r res_rescor}
+# the set_rescor(TRUE) model
+tidy_draws(corr_err_rescor_brm) |>
+  select(sigma_billdepthmm,
+         sigma_billlengthmm,
+         rescor__billdepthmm__billlengthmm) |>
+  reframe(across(everything(), 
+                 quantile, probs = c(0.25, 0.5, 0.75)))|>
+  mutate(q = c(0.25, 0.5, 0.75)) |> relocate(q)
+```
+
+Odd. Both models produce the same coefficient estimates, though, showing that both work equivalently in terms of controlling confounding and yielding correct results there. But, this is a work in progress on the correlation side..
+
+Let's look at those coefficients, though.
+
+```{r cor_err_coefs}
+bind_rows(
+  tidy(corr_err_brm) |> mutate(mod = "rescor=FALSE"),
+  tidy(corr_err_rescor_brm)|> mutate(mod = "rescor=TRUE")) |>
+  filter(response %in% c("billdepthmm", "billlengthmm"),
+         term %in% c("(Intercept)", "body_mass_g",
+                     "speciesChinstrap", "speciesGentoo")) |>
+  select(mod, response, term, estimate, std.error, conf.low, conf.high) |>
+  arrange(term, response)
+```
 
 ## Confounders and Instruments
 
@@ -951,9 +1014,9 @@ whalen_confound_bf <-
   set_rescor(FALSE)
 
 whalen_iv_bf <-
-  bf(grazers ~ trt + (1|ge|pole)) +
-  bf(epis ~ grazers+ (1|ge|pole)) + 
-  set_rescor(FALSE)
+  bf(grazers ~ trt) +
+  bf(epis ~ grazers) + 
+  set_rescor(TRUE)
 
 whalen_full_brm <- brm(
   whalen_full_bf,
@@ -968,6 +1031,7 @@ whalen_confound_brm <- brm(
 whalen_iv_brm <- brm(
   whalen_iv_bf,
   data = whalen,
+  file_refit = "on_change",
   file = "fit_models/whalen_ivl_brm.rds")
 
 bind_rows(
@@ -1153,9 +1217,9 @@ f_spartina <-
   
   # correlated residuals indicators of LV 
   bf(meanht_s ~ 0 + (1|c|siteno) + mi(performance), 
-     sigma = 1) +
+     sigma = 0.1) +
   bf(meanwidth_s ~ 0 + (1|c|siteno)+ mi(performance), 
-     sigma = 1)  +
+     sigma = 0.1)  +
   
   set_rescor(FALSE)
 ```
@@ -1280,13 +1344,14 @@ ostra_bf <-
   #level 2 is between - site level
   bf(winter_phytoplankton ~ winter_temp + 
        (1|site), 
-     sigma = 1) +
+     sigma = 0.1) +
   
   set_rescor(FALSE)
 
 #fit
 ostra_brm <- brm(ostra_bf, 
                  data = ostra_plot,
+                 file_refit = "on_change",
                  file = "fit_models/ostra_brm.rds")
 ```
 
@@ -1306,3 +1371,7 @@ Woo! This works! There's a lot more to explore here - fit, predictions, etc., bu
 ## Comments?
 
 I'm putting this on github as I want to version and change it. I hope to put it up in pieces on my blog at some point. For now, if you have questions, comments, suggestions for fixing things, or point out stuff I've done wrong, post an [issue on the repo for this tutorial](https://github.com/jebyrnes/bayesian_sem/issues)
+
+## Changelog
+
+2025-01-05: Revised correlated error section to include comparison with `set_rescor(TRUE)` and changed sigma from 1 to 0.1 for improved bias of residual estimation across the tutorial. Need to explore more.
